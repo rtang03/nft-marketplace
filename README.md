@@ -14,9 +14,5 @@ node scripts/sample-script.js
 npx hardhat help
 ```
 
-infura
-project id
-1b30531b03c749aab10cfd16597fce37
-secret
-e640fef43d1c4feb97d927bfb9747c8a
-https://polygon-mumbai.infura.io/v3/1b30531b03c749aab10cfd16597fce37
+source: 
+https://www.youtube.com/watch?v=GKJBEEXUha0&list=WL&index=16

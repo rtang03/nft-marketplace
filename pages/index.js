@@ -1,88 +1,95 @@
-import React from 'react'
-import Head from 'next/head'
-import Nav from '../components/nav'
+import { ethers } from 'ethers';
+import { useEffect, useState } from 'react';
+import axios from 'axios';
+import Web3Modal from 'web3modal';
 
-const Home = () => (
-  <div>
-    <Head>
-      <title>Home</title>
-      <link rel="icon" href="/favicon.ico" />
-    </Head>
+import { nftaddress, nftmarketaddress } from '../config';
 
-    <Nav />
+import NFT from '../artifacts/contracts/NFT.sol/NFT.json';
+import Market from '../artifacts/contracts/NFTMarket.sol/NFTMarket.json';
 
-    <div className="hero">
-      <h1 className="title">Welcome to Next.js!</h1>
-      <p className="description">
-        To get started, edit <code>pages/index.js</code> and save to reload.
-      </p>
+let rpcEndpoint = null;
 
-      <div className="row">
-        <a href="https://nextjs.org/docs" className="card">
-          <h3>Documentation &rarr;</h3>
-          <p>Learn more about Next.js in the documentation.</p>
-        </a>
-        <a href="https://nextjs.org/learn" className="card">
-          <h3>Next.js Learn &rarr;</h3>
-          <p>Learn about Next.js by following an interactive tutorial!</p>
-        </a>
-        <a
-          href="https://github.com/zeit/next.js/tree/master/examples"
-          className="card"
-        >
-          <h3>Examples &rarr;</h3>
-          <p>Find other example boilerplates on the Next.js GitHub.</p>
-        </a>
+if (process.env.NEXT_PUBLIC_WORKSPACE_URL) {
+  rpcEndpoint = process.env.NEXT_PUBLIC_WORKSPACE_URL;
+}
+
+export default function Home() {
+  const [nfts, setNfts] = useState([]);
+  const [loadingState, setLoadingState] = useState('not-loaded');
+  useEffect(() => {
+    loadNFTs();
+  }, []);
+  
+  async function loadNFTs() {
+    const provider = new ethers.providers.JsonRpcProvider(rpcEndpoint);
+    const tokenContract = new ethers.Contract(nftaddress, NFT.abi, provider);
+    const marketContract = new ethers.Contract(nftmarketaddress, Market.abi, provider);
+    const data = await marketContract.fetchMarketItems();
+
+    const items = await Promise.all(
+      data.map(async (i) => {
+        const tokenUri = await tokenContract.tokenURI(i.tokenId);
+        const meta = await axios.get(tokenUri);
+        let price = ethers.utils.formatUnits(i.price.toString(), 'ether');
+        let item = {
+          price,
+          itemId: i.itemId.toNumber(),
+          seller: i.seller,
+          owner: i.owner,
+          image: meta.data.image,
+          name: meta.data.name,
+          description: meta.data.description,
+        };
+        return item;
+      })
+    );
+    setNfts(items);
+    setLoadingState('loaded');
+  }
+  async function buyNft(nft) {
+    const web3Modal = new Web3Modal();
+    const connection = await web3Modal.connect();
+    const provider = new ethers.providers.Web3Provider(connection);
+    const signer = provider.getSigner();
+    const contract = new ethers.Contract(nftmarketaddress, Market.abi, signer);
+
+    const price = ethers.utils.parseUnits(nft.price.toString(), 'ether');
+    const transaction = await contract.createMarketSale(nftaddress, nft.itemId, {
+      value: price,
+    });
+    await transaction.wait();
+    loadNFTs();
+  }
+  if (loadingState === 'loaded' && !nfts.length)
+    return <h1 className="px-20 py-10 text-3xl">No items in marketplace</h1>;
+  return (
+    <div className="flex justify-center">
+      <div className="px-4" style={{ maxWidth: '1600px' }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
+          {nfts.map((nft, i) => (
+            <div key={i} className="border shadow rounded-xl overflow-hidden">
+              <img src={nft.image} />
+              <div className="p-4">
+                <p style={{ height: '64px' }} className="text-2xl font-semibold">
+                  {nft.name}
+                </p>
+                <div style={{ height: '70px', overflow: 'hidden' }}>
+                  <p className="text-gray-400">{nft.description}</p>
+                </div>
+              </div>
+              <div className="p-4 bg-black">
+                <p className="text-2xl mb-4 font-bold text-white">{nft.price} ETH</p>
+                <button
+                  className="w-full bg-pink-500 text-white font-bold py-2 px-12 rounded"
+                  onClick={() => buyNft(nft)}>
+                  Buy
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
-
-    <style jsx>{`
-      .hero {
-        width: 100%;
-        color: #333;
-      }
-      .title {
-        margin: 0;
-        width: 100%;
-        padding-top: 80px;
-        line-height: 1.15;
-        font-size: 48px;
-      }
-      .title,
-      .description {
-        text-align: center;
-      }
-      .row {
-        max-width: 880px;
-        margin: 80px auto 40px;
-        display: flex;
-        flex-direction: row;
-        justify-content: space-around;
-      }
-      .card {
-        padding: 18px 18px 24px;
-        width: 220px;
-        text-align: left;
-        text-decoration: none;
-        color: #434343;
-        border: 1px solid #9b9b9b;
-      }
-      .card:hover {
-        border-color: #067df7;
-      }
-      .card h3 {
-        margin: 0;
-        color: #067df7;
-        font-size: 18px;
-      }
-      .card p {
-        margin: 0;
-        padding: 12px 0 0;
-        font-size: 13px;
-        color: #333;
-      }
-    `}</style>
-  </div>
-)
-
-export default Home
+  );
+}
